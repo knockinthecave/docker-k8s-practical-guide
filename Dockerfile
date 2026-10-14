@@ -10,6 +10,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
+COPY seed/ ./seed/
+
+# 임시 데이터(tmp), 영구 데이터(data, 볼륨 마운트 위치) 디렉토리
+RUN mkdir -p /app/tmp /app/data
 
 EXPOSE 8000
 
