@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,7 +10,9 @@ SEED_FILE = BASE_DIR / "seed" / "items.json"  # 1. 이미지: 빌드 시 고정
 NOTES_FILE = BASE_DIR / "tmp" / "notes.txt"  # 2. 임시: 컨테이너 read-write 레이어
 USERS_FILE = BASE_DIR / "data" / "users.json"  # 3. 영구: 볼륨을 마운트하는 위치
 
-app = FastAPI(title="Dummy Backend")
+APP_NAME = os.environ.get("APP_NAME", "Dummy Backend")  # ENV 실습용
+
+app = FastAPI(title=APP_NAME)
 
 
 class Item(BaseModel):
@@ -42,7 +45,7 @@ def load_users() -> list[User]:
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "app": APP_NAME}
 
 
 # --- 1. 이미지 데이터: 읽기 전용 seed ---

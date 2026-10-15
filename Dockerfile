@@ -15,6 +15,14 @@ COPY seed/ ./seed/
 # 임시 데이터(tmp), 영구 데이터(data, 볼륨 마운트 위치) 디렉토리
 RUN mkdir -p /app/tmp /app/data
 
-EXPOSE 8000
+# ARG: 빌드 시점에만 존재 (--build-arg DEFAULT_PORT=9000)
+ARG DEFAULT_PORT=8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# ENV: 이미지·컨테이너 런타임까지 유지 (docker run -e PORT=9000 으로 덮어쓰기)
+ENV PORT=$DEFAULT_PORT
+ENV APP_NAME="docker-practice-app"
+
+EXPOSE $PORT
+
+# 환경변수 치환이 필요하므로 sh -c 사용 (exec로 uvicorn이 PID 1 유지)
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
