@@ -1,7 +1,10 @@
 import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
+import redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -11,6 +14,19 @@ NOTES_FILE = BASE_DIR / "tmp" / "notes.txt"  # 2. 임시: 컨테이너 read-writ
 USERS_FILE = BASE_DIR / "data" / "users.json"  # 3. 영구: 볼륨을 마운트하는 위치
 
 APP_NAME = os.environ.get("APP_NAME", "Dummy Backend")  # ENV 실습용
+SWAPI_URL = os.environ.get("SWAPI_URL", "https://swapi.dev/api")  # 4. 네트워크: 외부 API
+SWAPI_TIMEOUT_SECONDS = 10
+
+# 5. 컨테이너 간 통신: 다른 컨테이너(Redis)에 접속. 호스트명은 컨테이너 이름(네트워크 DNS)
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+REDIS_TIMEOUT_SECONDS = 3
+redis_client = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    socket_connect_timeout=REDIS_TIMEOUT_SECONDS,
+    decode_responses=True,
+)
 
 app = FastAPI(title=APP_NAME)
 
@@ -91,3 +107,41 @@ def add_user(user: UserIn) -> User:
 @app.get("/users")
 def list_users() -> list[User]:
     return load_users()
+
+
+# --- 4. 네트워크: 컨테이너 안의 앱이 외부 API(WWW)로 HTTP 요청을 보낸다 ---
+def fetch_swapi(resource: str) -> list[dict]:
+    url = f"{SWAPI_URL}/{resource}/"
+    try:
+        with urllib.request.urlopen(url, timeout=SWAPI_TIMEOUT_SECONDS) as res:
+            return json.load(res)["results"]
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError) as e:
+        raise HTTPException(502, f"swapi request failed: {e}") from e
+
+
+@app.get("/films")
+def list_films() -> list[dict]:
+    return fetch_swapi("films")
+
+
+@app.get("/people")
+def list_people() -> list[dict]:
+    return fetch_swapi("people")
+
+
+# --- 5. 컨테이너 간 통신: Redis 컨테이너에 방문 횟수 저장 ---
+def redis_call(op):
+    try:
+        return op()
+    except redis.RedisError as e:
+        raise HTTPException(503, f"redis unavailable ({REDIS_HOST}:{REDIS_PORT}): {e}") from e
+
+
+@app.post("/visits")
+def count_visit() -> dict[str, int]:
+    return {"visits": redis_call(lambda: redis_client.incr("visits"))}
+
+
+@app.get("/visits")
+def get_visits() -> dict[str, int]:
+    return {"visits": int(redis_call(lambda: redis_client.get("visits")) or 0)}
